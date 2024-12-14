@@ -1,0 +1,40 @@
+curl --location 'http://localhost:9000/worker/init-training?job_id=tb_training_1' \
+--header 'Accept-Language: en-US,en;q=0.9' \
+--header 'Connection: keep-alive' \
+--header 'Content-Type: application/json' \
+--header 'Origin: http://localhost:9000' \
+--header 'Referer: http://localhost:9000/docs' \
+--header 'Sec-Fetch-Dest: empty' \
+--header 'Sec-Fetch-Mode: cors' \
+--header 'Sec-Fetch-Site: same-origin' \
+--header 'User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' \
+--header 'accept: application/json' \
+--header 'sec-ch-ua: "Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"' \
+--header 'sec-ch-ua-mobile: ?0' \
+--header 'sec-ch-ua-platform: "Linux"' \
+--data '{
+    "dataset": {
+        "images": [
+            {"url": "http://localhost:9000/datasets/tb_dataset_tiny/Normal/Normal-1.png", "label": 0},
+            {"url": "http://localhost:9000/datasets/tb_dataset_tiny/Normal/Normal-10.png", "label": 0},
+            {"url": "http://localhost:9000/datasets/tb_dataset_tiny/Normal/Normal-15.png", "label": 0},
+            {"url": "http://localhost:9000/datasets/tb_dataset_tiny/Normal/Normal-1.png", "label": 0},
+            {"url": "http://localhost:9000/datasets/tb_dataset_tiny/Normal/Normal-24.png", "label": 0},
+            {"url": "http://localhost:9000/datasets/tb_dataset_tiny/Normal/Normal-5.png", "label": 0},
+            {"url": "http://localhost:9000/datasets/tb_dataset_tiny/Normal/Normal-11.png", "label": 0},
+            {"url": "http://localhost:9000/datasets/tb_dataset_tiny/Normal/Normal-16.png", "label": 0},
+            {"url": "http://localhost:9000/datasets/tb_dataset_tiny/Normal/Normal-20.png", "label": 0},
+
+            {"url": "http://localhost:9000/datasets/tb_dataset_tiny/Tuberculosis/Tuberculosis-1.png", "label": 1},
+            {"url": "http://localhost:9000/datasets/tb_dataset_tiny/Tuberculosis/Tuberculosis-3.png", "label": 1},
+            {"url": "http://localhost:9000/datasets/tb_dataset_tiny/Tuberculosis/Tuberculosis-5.png", "label": 1},
+            {"url": "http://localhost:9000/datasets/tb_dataset_tiny/Tuberculosis/Tuberculosis-2.png", "label": 1},
+            {"url": "http://localhost:9000/datasets/tb_dataset_tiny/Tuberculosis/Tuberculosis-4.png", "label": 1}
+        ]
+    },
+    "algo_name": "ResNet50",
+    "learning_rate": 0.001,
+    "total_epoch": 1,
+    "label": 1
+}
+'
