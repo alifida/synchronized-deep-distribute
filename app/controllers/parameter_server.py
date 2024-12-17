@@ -8,11 +8,65 @@ from app.helpers.weights_helper import serialize_weights,deserialize_weights
 
 ps_router = APIRouter()
 
+
+
+
+@ps_router.post("/submit-gradients/{job_id}")
+async def submit_gradients(request: Request, job_id: str):
+    """
+        Endpoint to receive gradients from a worker and aggregate them.
+        """
+    print(f"-----sumbmit_gradients___by worker ----{job_id}")
+    try:
+        # Read binary gzipped payload
+        compressed_data = await request.body()
+        worker_gradients = deserialize_weights(compressed_data)
+
+        # Call the aggregation logic
+        success = await ParameterService.aggregate_gradients(job_id, worker_gradients)
+
+        if not success:
+            raise HTTPException(status_code=400, detail="Failed to aggregate gradients.")
+        return {"status": "success", "message": "Gradients aggregated successfully."}
+
+    except (gzip.BadGzipFile, pickle.PickleError) as e:
+        raise HTTPException(status_code=400, detail=f"Failed to process gradients: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
+
+
+@ps_router.get("/get-gradients/{job_id}")
+async def get_gradients(job_id: str):
+    """
+      Endpoint to return aggregated gradients for a job.
+      """
+    try:
+        # Fetch gradients from the parameter service
+        gradients = await ParameterService.get_aggregated_gradients(job_id)
+
+        if gradients is None:
+            return {"status": "success", "gradients": None}
+        gradients = serialize_weights(gradients)
+
+
+        # Return the compressed data with the appropriate headers
+        return Response(
+            content=gradients,
+            media_type="application/octet-stream",  # This indicates binary content
+            headers={"Content-Encoding": "gzip"},  # Indicating the content is gzipped
+            status_code=200
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
+
+'''
+
 @ps_router.post("/submit-weights/{job_id}")
 async def submit_weights(request: Request, job_id: str):
     """
     Endpoint to receive weights from a worker and aggregate them.
     """
+    print(f"-----sumbmit_weight___by worker ----{job_id}")
     try:
         # Read binary gzipped payload
         compressed_data = await request.body()
@@ -80,3 +134,5 @@ async def get_weights_____(job_id: str):
         return {"status": "success", "weights": weights_compressed}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
+
+'''

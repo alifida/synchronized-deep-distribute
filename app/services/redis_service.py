@@ -4,15 +4,30 @@ from typing import Optional, Any
 from fastapi import HTTPException
 from app.config.settings import REDIS_URL  # Import the Redis connection string
 from app.helpers.weights_helper import serialize_weights, deserialize_weights
+from rq import Queue
+
+
 class RedisClientService:
 
-    JOB_PREFIX="job_id_"
 
+    JOB_PREFIX="job_id_"
+    task_queue =None
     def __init__(self, redis_url: str = REDIS_URL):
         try:
             self.redis = redis.from_url(redis_url, decode_responses=False, )
         except redis.RedisError as e:
             raise HTTPException(status_code=500, detail=f"Failed to connect to Redis: {str(e)}")
+
+
+
+
+    def get_redis_connection(self):
+        return redis_client.redis
+
+    def get_task_queue(self):
+        if not self.task_queue:
+            self.task_queue = Queue("task_q", self.get_redis_connection())
+        return self.task_queue
 
     def update_weights(self, job_id, weights):
 
@@ -23,6 +38,18 @@ class RedisClientService:
             if weights:
                 weights = serialize_weights(weights)
             return self.redis.set(key, weights)
+        except redis.RedisError as e:
+            raise HTTPException(status_code=500, detail=f"Redis Error: {str(e)}")
+
+    def update_gradients(self, job_id, gradients):
+
+        key = f"{self.JOB_PREFIX}{job_id}_latest_gradients"
+
+        """Sets data to Redis with optional TTL."""
+        try:
+            if gradients:
+                gradients = serialize_weights(gradients)
+            return self.redis.set(key, gradients)
         except redis.RedisError as e:
             raise HTTPException(status_code=500, detail=f"Redis Error: {str(e)}")
 

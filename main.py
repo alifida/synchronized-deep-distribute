@@ -8,6 +8,8 @@ from app.controllers.worker import w_router
 from app.controllers.training_job_controller import training_job_router
 from fastapi.staticfiles import StaticFiles
 import os
+from app.services.redis_service import redis_client
+
 
 #Disable gpu
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -15,6 +17,9 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.mount("/datasets", StaticFiles(directory="/media/ali/workspace/dataset"), name="datasets")
+
+
+task_queue = redis_client.get_task_queue()
 
 # CORS Middleware
 app.add_middleware(
