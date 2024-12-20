@@ -13,3 +13,8 @@ SUBMIT_GRADIENTS_URL = f"{PARAMETER_SERVER_URL}/submit-gradients"
 GET_GRADIENTS_URL = f"{PARAMETER_SERVER_URL}/get-gradients"
 
 
+SUBMIT_METRICS_URL = f"{PARAMETER_SERVER_URL}/submit-metrics"
+SUBMIT_STATS_URL = f"{PARAMETER_SERVER_URL}/submit-stats"
+
+TRAINED_MODELS_DIR ="/media/ali/workspace/models"
+

@@ -3,9 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import asyncpg
 #from models import TrainDatasetImg, TrainTrainingJob
-from app.controllers.parameter_server import ps_router
-from app.controllers.worker import w_router
+from app.controllers.parameter_server_controller import ps_router
+from app.controllers.worker_controller import w_router
 from app.controllers.training_job_controller import training_job_router
+from app.controllers.trained_model_controller import trained_model_router
 from fastapi.staticfiles import StaticFiles
 import os
 from app.services.redis_service import redis_client
@@ -17,6 +18,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.mount("/datasets", StaticFiles(directory="/media/ali/workspace/dataset"), name="datasets")
+app.mount("/models", StaticFiles(directory="/media/ali/workspace/models"), name="datasets")
 
 
 task_queue = redis_client.get_task_queue()
@@ -52,6 +54,7 @@ async def shutdown():
 app.include_router(ps_router, prefix="/ps", tags=["Parameter Server"])
 app.include_router(w_router, prefix="/worker", tags=["Worker"])
 app.include_router(training_job_router, prefix="/training-jobs", tags=["Training Jobs"])
+app.include_router(trained_model_router, prefix="/trained-models", tags=["Trained Models"])
 
 
 

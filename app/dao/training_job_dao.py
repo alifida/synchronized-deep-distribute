@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from app.models.train_training_job import TrainingJob
+from app.models.training_job import TrainingJob
 
 class TrainingJobDAO:
     @staticmethod

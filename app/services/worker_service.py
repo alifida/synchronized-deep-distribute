@@ -1,11 +1,11 @@
 import asyncio
-from app.background_tasks.worker_sync import fetch_latest_gradients, submit_gradients
+from app.background_tasks.worker_sync import fetch_latest_gradients, submit_gradients, submit_metrics, submit_weights, submit_stats
 import tensorflow as tf
 from collections import deque
 from app.helpers.weights_helper import aggregate
 from .redis_service import redis_client
 from app.services.dataset_service import DatasetService
-
+import time
 
 
 #from app.services.model_loader import load_model  # Hypothetical helper to load models dynamically
@@ -16,7 +16,7 @@ from app.services.keras_catalog_service import KerasCatalogService as kerasServi
 class WorkerService:
 
     @staticmethod
-    async def initialize_training(job_id: str, init_params: dict):
+    async def initialize_training(worker_id:str, job_id: str, init_params: dict):
         """
         Initialize worker with training parameters and start training.
         """
@@ -40,24 +40,27 @@ class WorkerService:
         await DatasetService.download_images(job_id, examples)
 
         # Start training in the background
-        asyncio.create_task(WorkerService.start_training(job_id))
+        asyncio.create_task(WorkerService.start_training(worker_id, job_id))
 
         return True
 
     @staticmethod
-    async def start_training(job_id: str):
+    async def start_training(worker_id:str, job_id: str):
         """
         Start training using the provided model and images.
         """
+        training_stats = {
+            "training_started_at": time.time(),
+        }
         try:
             # Retrieve job-specific context
             job_context = redis_client.get_job_context(job_id)
 
             init_params = job_context["init_params"]
             total_epoch = init_params.get("total_epoch", 1)
-            total_images = job_context["total_images"]
-            downloaded_images_count = job_context["downloaded_images_count"]
-            #processed_images_count = job_context["processed_images_count"]
+
+
+
 
             # Initialize model
             learning_rate = init_params.get("learning_rate", 0.001)
@@ -99,7 +102,7 @@ class WorkerService:
                         images_q.append(images_q.popleft())
                     else:
 
-                        latest_gradients = await fetch_latest_gradients(job_id=job_id)
+                        #latest_gradients = await fetch_latest_gradients(worker_id=worker_id, job_id=job_id)
 
                         # Fetch latest weights
                         #await fetch_latest_weights_task(job_id=job_id)
@@ -144,7 +147,7 @@ class WorkerService:
 
                         # Submit updated weights to parameter server
                         #await submit_weights_task(job_id=job_id, weights=model.trainable_variables)
-                        await submit_gradients(job_id, gradients)
+                        await submit_gradients(worker_id, job_id, gradients)
                         #asyncio.create_task(submit_weights(job_id=job_id, weights=model.trainable_variables))
 
                         #submit_weight_thread = threading.Thread(target=submit_weights, args=(job_id, model.trainable_variables))
@@ -152,10 +155,20 @@ class WorkerService:
                         #submit_weight_thread.start()
 
                         # Fetch the latest aggregated weights and update the model
-                        latest_gradients = await fetch_latest_gradients(job_id=job_id)
+                        latest_gradients = await fetch_latest_gradients(worker_id=worker_id, job_id=job_id)
                         if latest_gradients:
                             optimizer.apply_gradients(zip(latest_gradients, model.trainable_variables))
 
+                        # submit results
+                        if init_params.get("post_realtime_results", True):
+                            metrics = {
+                                "accuracy" : accuracy_metric.result().numpy(),
+                                "precision" : precision_metric.result().numpy(),
+                                "recall" : recall_metric.result().numpy(),
+                                "auc" : auc_metric.result().numpy(),
+                                "f1_final" : f1_score.result().numpy(),
+                            }
+                            await submit_metrics(worker_id,job_id, metrics)
 
                         '''
                         
@@ -169,8 +182,12 @@ class WorkerService:
                             for var, latest in zip(model.trainable_variables, latest_weights):
                                 var.assign(latest)
                         '''
-                        if latest_gradients:
-                            optimizer.apply_gradients(zip(latest_gradients, model.trainable_variables))
+
+
+
+
+
+
 
                         images_q.popleft()
                         processed_images_count +=1
@@ -191,14 +208,18 @@ class WorkerService:
                 'auc': auc,
                 'f1_score': f1_final
             }
-
+            # send
             print(f"Training complete for job {job_id}. Metrics: {metrics}")
-            return metrics
-
+            await submit_weights(worker_id=worker_id, job_id=job_id, weights=model.trainable_variables)
+            training_stats["status"] = "success"
         except Exception as e:
             print(f"Error during training for job {job_id}: {str(e)}")
+            training_stats["status"] = "error"
             return None
         finally:
+            training_stats ["epoch"] = epoch
+            training_stats ["training_ended_at"] = time.time()
+            await submit_stats(worker_id=worker_id, job_id=job_id,  stats=training_stats)
             redis_client.clear_job_context(job_id)  # Clean up context
 
 

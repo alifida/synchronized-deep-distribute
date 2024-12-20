@@ -8,7 +8,6 @@ Base = declarative_base()
 
 class TrainingJob(Base):
     __tablename__ = 'train_training_job'
-
     # Primary Key: ID
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
 

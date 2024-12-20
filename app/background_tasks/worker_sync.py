@@ -1,8 +1,8 @@
 import aiohttp
 import gzip
 import pickle
-
-from app.config.settings import SUBMIT_WEIGHTS_URL, GET_WEIGHTS_URL, SUBMIT_GRADIENTS_URL, GET_GRADIENTS_URL
+import numpy as np
+from app.config.settings import SUBMIT_WEIGHTS_URL, GET_WEIGHTS_URL, SUBMIT_GRADIENTS_URL, GET_GRADIENTS_URL, SUBMIT_METRICS_URL, SUBMIT_STATS_URL
 from app.services.redis_service import redis_client
 from app.helpers.weights_helper import serialize_weights, deserialize_weights, sparsify_gradients
 import tensorflow as tf
@@ -13,18 +13,18 @@ import tensorflow as tf
 
 
 
-async def submit_weights_task(job_id: str, weights: list):
+async def submit_weights_task(worker_id: str, job_id: str, weights: list):
 
     queue = redis_client.get_task_queue()
-    queue.enqueue(submit_weights, job_id, weights, result_ttl=0)
+    queue.enqueue(submit_weights, worker_id, job_id, weights, result_ttl=0)
 
-async def fetch_latest_weights_task(job_id: str):
+async def fetch_latest_weights_task(worker_id: str, job_id: str):
 
     queue = redis_client.get_task_queue()
-    queue.enqueue(fetch_latest_weights_task, job_id, result_ttl=0)
+    queue.enqueue(fetch_latest_weights, worker_id, job_id, result_ttl=0)
 
 
-async def submit_weights(job_id: str, weights: list):
+async def submit_weights(worker_id: str, job_id: str, weights: list):
     """
     Submit the updated weights to the parameter server with compression for efficiency.
     """
@@ -40,7 +40,7 @@ async def submit_weights(job_id: str, weights: list):
         async with aiohttp.ClientSession() as session:
             print("-----------3")
             async with session.post(
-                f"{SUBMIT_WEIGHTS_URL}/{job_id}",
+                f"{SUBMIT_WEIGHTS_URL}/{worker_id}/{job_id}",
                 data=compressed_weights,  # Send compressed binary data
                 headers={"Content-Encoding": "gzip", "Content-Type": "application/octet-stream"}
             ) as response:
@@ -58,14 +58,14 @@ async def submit_weights(job_id: str, weights: list):
 
 
 
-async def fetch_latest_weights(job_id: str):
+async def fetch_latest_weights(worker_id: str, job_id: str):
     """
     Fetch the latest aggregated weights from the parameter server and update in Redis.
     """
     print("------fetch_latest_weights called ----------------")
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.get(f"{GET_WEIGHTS_URL}/{job_id}") as response:
+            async with session.get(f"{GET_WEIGHTS_URL}/{worker_id}/{job_id}") as response:
                 if response.status == 200:
                     content_encoding = response.headers.get("Content-Encoding", "")
                     if "gzip" in content_encoding:
@@ -105,7 +105,7 @@ async def fetch_latest_weights(job_id: str):
 
 
 ''' ================== GRADIENTS==================='''
-async def submit_gradients(job_id: str, gradients: list):
+async def submit_gradients(worker_id:str, job_id: str, gradients: list):
     """
     Submit the computed gradients to the parameter server with compression for efficiency.
     """
@@ -120,7 +120,7 @@ async def submit_gradients(job_id: str, gradients: list):
         compressed_gradients = serialize_weights(normalized_gradients)  # Using same serialization as weights
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                f"{SUBMIT_GRADIENTS_URL}/{job_id}",
+                f"{SUBMIT_GRADIENTS_URL}/{worker_id}/{job_id}",
                 data=compressed_gradients,  # Send compressed binary data
                 headers={"Content-Encoding": "gzip", "Content-Type": "application/octet-stream"}
             ) as response:
@@ -133,14 +133,14 @@ async def submit_gradients(job_id: str, gradients: list):
     except Exception as e:
         print(f"Exception occurred while submitting gradients for job {job_id}: {e}")
 
-async def fetch_latest_gradients(job_id: str):
+async def fetch_latest_gradients(worker_id: str, job_id: str):
     """
     Fetch the latest aggregated gradients from the parameter server and update in Redis.
     """
     print("------fetch_latest_gradients called ----------------")
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.get(f"{GET_GRADIENTS_URL}/{job_id}") as response:
+            async with session.get(f"{GET_GRADIENTS_URL}/{worker_id}/{job_id}") as response:
                 if response.status == 200:
                     content_encoding = response.headers.get("Content-Encoding", "")
                     if "gzip" in content_encoding:
@@ -160,3 +160,57 @@ async def fetch_latest_gradients(job_id: str):
         except Exception as e:
             print(f"Exception occurred while fetching gradients for job {job_id}: {e}")
     return None
+
+
+
+
+
+''' ================== Metrics==================='''
+
+async def submit_metrics(worker_id: str, job_id: str, metrics: dict):
+    """
+    Submit the real-time metrics to the parameter server.
+    """
+    print("------submit_metrics called ----------------")
+    try:
+        # Convert any numpy.float32 values to native Python float
+        metrics = {key: float(value) if isinstance(value, np.float32) else value for key, value in metrics.items()}
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                    f"{SUBMIT_METRICS_URL}/{worker_id}/{job_id}",
+                    json=metrics,  # Use json to send as JSON
+            ) as response:
+                if response.status == 200:
+                    print(f"Metrics successfully submitted for job {job_id}")
+                else:
+                    print(f"Error submitting metrics for job {job_id}: {response.status}")
+                    response_text = await response.text()
+                    print(f"Response: {response_text}")
+    except Exception as e:
+        print(f"Exception occurred while submitting metrics for job {job_id}: {e}")
+
+
+
+''' ================== Metrics==================='''
+
+async def submit_stats(worker_id: str, job_id: str, stats: dict):
+    """
+    Submit the real-time stats to the parameter server.
+    """
+    print("------submit_stats called ----------------")
+    try:
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                    f"{SUBMIT_STATS_URL}/{worker_id}/{job_id}",
+                    json=stats,  # Use json to send as JSON
+            ) as response:
+                if response.status == 200:
+                    print(f"stats successfully submitted for job {job_id}")
+                else:
+                    print(f"Error submitting stats for job {job_id}: {response.status}")
+                    response_text = await response.text()
+                    print(f"Response: {response_text}")
+    except Exception as e:
+        print(f"Exception occurred while submitting stats for job {job_id}: {e}")

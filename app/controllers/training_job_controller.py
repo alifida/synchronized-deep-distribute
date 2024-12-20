@@ -22,3 +22,4 @@ async def get_training_job_by_id(job_id: int, db: AsyncSession = Depends(get_db)
 async def update_training_job_status(job_id: int, status: str, db: AsyncSession = Depends(get_db)):
     await TrainingJobDAO.update_training_job_status(db, job_id, status)
     return {"message": "Training job status updated"}
+
