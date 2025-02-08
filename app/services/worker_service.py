@@ -51,6 +51,7 @@ class WorkerService:
         """
         training_stats = {
             "training_started_at": time.time(),
+            "status" : "started"
         }
         try:
             # Retrieve job-specific context
@@ -211,7 +212,7 @@ class WorkerService:
             # send
             print(f"Training complete for job {job_id}. Metrics: {metrics}")
             await submit_weights(worker_id=worker_id, job_id=job_id, weights=model.trainable_variables)
-            training_stats["status"] = "success"
+            training_stats["status"] = "completed"
         except Exception as e:
             print(f"Error during training for job {job_id}: {str(e)}")
             training_stats["status"] = "error"

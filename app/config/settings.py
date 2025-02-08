@@ -1,6 +1,7 @@
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:window@localhost/deep-distribute")
+#rDATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:window@localhost/deep-distribute")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:szabist@192.168.10.120:5432/deep-distribute")
 
 # Redis connection string
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")

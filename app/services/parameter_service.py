@@ -1,3 +1,5 @@
+import json
+
 from app.db.database import get_db
 from app.config.settings import TRAINED_MODELS_DIR
 from app.helpers.weights_helper import aggregate, aggregate_gradients
@@ -8,6 +10,9 @@ from app.dao.training_job_dao import TrainingJobDAO
 from app.dao.trained_model_dao import TrainedModelDAO
 from app.dao.dataset_Img_dao import DatasetImgDAO
 from app.models.trained_model import TrainedModel
+import datetime
+from app.models.training_job import TrainingJob
+
 from app.models.dataset_Img import DatasetImg
 
 
@@ -214,7 +219,7 @@ class ParameterService:
                 pickle.dump(aggregated_weights, model_file)
 
             # Prepare and return training details
-            return {
+            result = {
                 "job_id": job_id,
                 "total_workers": total_workers,
                 "completed_workers": completed_workers,
@@ -226,24 +231,34 @@ class ParameterService:
                 "model_file_path": model_file_path
             }
 
-            db = get_db()
-            TrainingJobDAO.update_training_job_status(db, job_id, "COMPLETED")
-            traing_job = TrainingJobDAO.fetch_training_job_by_id(db, job_id)
-            dataset  = DatasetImgDAO.fetch_dataset_image_by_id(traing_job.dataset_img_id)
-            class_labels = get_class_labels(dataset.extracted_path)
-            trained_model = TrainedModel(
-                model_file=model_file_path,
-                description=traing_job.algo,
-                status="Temp",
-                created_at=datetime.now(),
-                updated_at=datetime.now(),
-                key_attributes="",
-                class_label=class_labels,
-                dataset_id=traing_job.dataset_img_id,
-                user_id=dataset.user_id
-            )
+            async for db in get_db():  # Await the async generator
 
-            TrainedModelDAO.save_trained_model(db, trained_model)
+                training_job = await TrainingJobDAO.fetch_training_job_by_id(db, job_id)
+                if not training_job:
+                    training_job = TrainingJob()
+                    training_job.job_name = job_id
+                    training_job.dataset_img_id=1
+                    training_job.algo =''
+                    training_job.user_id=1
+                training_job.result = json.dumps(result)
+                training_job.status = "COMPLETED"
+                await TrainingJobDAO.save(db, training_job)
+                current_time = datetime.datetime.now()
+                dataset  = await DatasetImgDAO.fetch_dataset_image_by_id(db, training_job.dataset_img_id)
+                class_labels = await get_class_labels(dataset.extracted_path)
+                trained_model = TrainedModel(
+                    model_file=model_file_path,
+                    description=training_job.algo,
+                    status="Temp",
+                    created_at=current_time,
+                    updated_at=current_time,
+                    key_attributes="",
+                    class_label=json.dumps(class_labels),
+                    dataset_img_id=training_job.dataset_img_id,
+                    user_id=dataset.user_id
+                )
+
+                await TrainedModelDAO.save_trained_model(db, trained_model)
 
         except Exception as e:
             print(f"Error in preparing trained model details for job {job_id}: {str(e)}")
