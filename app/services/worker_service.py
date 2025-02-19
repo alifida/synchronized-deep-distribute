@@ -65,6 +65,14 @@ class WorkerService:
 
             # Initialize model
             learning_rate = init_params.get("learning_rate", 0.001)
+            if isinstance(learning_rate, str):
+                try:
+                    learning_rate = float(learning_rate)
+                    total_epoch = int(total_epoch)
+                except ValueError:
+                    print("Error: Invalid value for learning_rate, unable to convert to float.")
+                    learning_rate = 0.001  
+                    total_epoch = 1
 
             # Load model dynamically based on model_name
             base_model = kerasService.get_model_object(init_params['algo_name'])  # Get pre-trained model
@@ -218,7 +226,7 @@ class WorkerService:
             training_stats["status"] = "error"
             return None
         finally:
-            training_stats ["epoch"] = epoch
+            #training_stats ["epoch"] = epoch
             training_stats ["training_ended_at"] = time.time()
             await submit_stats(worker_id=worker_id, job_id=job_id,  stats=training_stats)
             redis_client.clear_job_context(job_id)  # Clean up context

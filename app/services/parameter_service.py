@@ -1,5 +1,6 @@
+import re
 import json
-
+import aiohttp
 from app.db.database import get_db
 from app.config.settings import TRAINED_MODELS_DIR
 from app.helpers.weights_helper import aggregate, aggregate_gradients
@@ -12,15 +13,157 @@ from app.dao.dataset_Img_dao import DatasetImgDAO
 from app.models.trained_model import TrainedModel
 import datetime
 from app.models.training_job import TrainingJob
-
-from app.models.dataset_Img import DatasetImg
-
-
+from app.dao.cluster_nodes_dao import ClusterNodesDAO
+from app.models.cluster_node import ClusterNode
+from typing import List, Dict
+import math
 class ParameterService:
     weights_store = {}  # In-memory storage for weights by job_id
     gradients_store = {}  # In-memory storage for gradients by job_id
     metrics_store ={} # In-memory storage for metrics by job_id
     stats_store ={}
+
+
+    async def start_training_job(data):
+        init_params = data.get('init_params')
+        job_data = init_params.get('job_data')
+        parameter_settings = job_data.get('parameter_settings')
+        #dataset_img = DatasetImgDAO.fetch_all_dataset_images(job_data.get('dataset_img'))
+        dataset_details = init_params.get('dataset_details')
+       
+        dataset_host_url = dataset_details.get('host_url')
+        del dataset_details['host_url'] #remove the host url from dataset
+        train_ds_details = dataset_details.get('train')
+        #classes = train_ds_details.get("class_names")
+        classwise_details = train_ds_details.get("classwise_details")
+
+
+        cluster_id = parameter_settings.get("cluster")
+        async for db in get_db():
+            workers =await ClusterNodesDAO.fetch_workers_by_cluster_id(db, cluster_id)
+
+        print("-------------------------------------------")
+        print("-------------------------------------------")
+        print("-------------------------------------------")
+        print("-------------------------------------------")
+
+        print (json.dumps(classwise_details))
+
+        subsets = await ParameterService.divide_dataset_classwise(classwise_details, workers, dataset_host_url)
+        
+
+        print("--------------------")
+
+        response = await ParameterService.distribute_training_amoung_workers(subsets, workers, parameter_settings, f"job_id_{job_data['job_id']}")
+
+    @staticmethod
+    async def distribute_training_amoung_workers(subsets, workers, parameter_settings, job_id):
+        # Clean the parameter settings
+        parameter_settings['total_epoch'] = parameter_settings['epochs']
+        
+        del parameter_settings["dataset_id"]
+        del parameter_settings["cluster"]
+        del parameter_settings["strategy"]
+        del parameter_settings["epochs"]
+         
+        payload = parameter_settings
+       
+
+        responses = {}
+
+        # Create an aiohttp session for making asynchronous requests
+        async with aiohttp.ClientSession() as session:
+            # Iterate over the workers
+            for worker in workers:
+                worker_key = ParameterService.get_worker_key(worker)
+                
+                # Assign dataset to the payload based on worker key
+                payload["dataset"] = subsets[worker_key]["dataset"]
+                
+                # Create the worker URL with the job and worker ID
+                worker_url = f"http://{worker.ip_address}:{worker.port}/worker/init-training?worker_id=worker_{worker.id}&job_id={job_id}"
+                
+                try:
+                    # Send the POST request to the worker's URL
+                    async with session.post(worker_url, json=payload) as response:
+                        
+                        # Check if the request was successful (HTTP status code 200)
+                        if response.status == 200:
+                            responses[worker_key] = await response.json()  # Collect the response as a JSON object
+                        else:
+                            responses[worker_key] = {"error": f"Failed with status code {response.status}"}
+
+                except aiohttp.ClientError as exc:
+                    # Handle request errors
+                    responses[worker_key] = {"error": f"Request failed: {exc}"}
+
+        # Return the collected responses
+        return responses
+
+
+
+    @staticmethod
+    async def divide_dataset_classwise(classwise_details: List[Dict], workers: List[ClusterNode], dataset_host_url:str):
+        total_workers = len(workers)
+        
+        # Step 1: Create a mapping of class names to labels
+        class_labels = {class_details["class_name"]: idx for idx, class_details in enumerate(classwise_details)}
+
+        # Step 2: Prepare to divide the dataset for each worker
+        worker_datasets = {f"w_{worker.ip_address}_{worker.port}": {"dataset": {"images": []}} for worker in workers}
+
+        # Step 3: Divide the images of each class equally among the workers
+        for class_details in classwise_details:
+            class_name = class_details["class_name"]
+            total_examples = class_details["total_examples"]
+            preview_images = class_details["preview_images"]
+            class_label = class_labels[class_name]
+            
+            # Calculate how many images each worker should get
+            images_per_worker = math.ceil(total_examples / total_workers)
+            
+            # Step 4: Assign images to workers
+            for idx, worker in enumerate(workers):
+                worker_label = ParameterService.get_worker_key(worker)
+                
+                # Slice the list of preview images for this worker
+                start_idx = idx * images_per_worker
+                end_idx = start_idx + images_per_worker
+                
+                # Ensure we don't exceed the total examples
+                worker_images = preview_images[start_idx:end_idx]
+                
+                # Append the images with the appropriate label
+                for image_url in worker_images:
+                    image_url = image_url.replace("\\", "/").replace("\\\\", "/")
+                    worker_datasets[worker_label]["dataset"]["images"].append({
+                        "url": f"{dataset_host_url}{image_url}",
+                        "label": class_label
+                    })
+        
+        # Step 5: Return the worker datasets
+        #return list(worker_datasets.values())
+        return worker_datasets
+
+    def get_worker_key(worker):
+        return f"w_{worker.ip_address}_{worker.port}"
+    
+    
+
+    def get_worker_url_by_key(key):
+        # Extract the worker's IP address and port from the key using regular expressions
+        match = re.match(r"w_(\S+)_(\d+)", key)
+        if match:
+            ip_address = match.group(1)
+            port = match.group(2)
+            
+            # Construct the URL using the extracted IP and port
+            url = f"http://{ip_address}:{port}"
+            return url
+        else:
+            raise ValueError("Invalid key format")
+
+
     @staticmethod
     async def aggregate_metrics(worker_id: str, job_id: str, metrics: dict):
         try:

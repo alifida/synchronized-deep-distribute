@@ -16,9 +16,10 @@ from app.services.redis_service import redis_client
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 app = FastAPI()
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
-app.mount("/datasets", StaticFiles(directory="/media/ali/workspace/dataset"), name="datasets")
-app.mount("/models", StaticFiles(directory="/media/ali/workspace/models"), name="datasets")
+#app.mount("/static", StaticFiles(directory="app/static"), name="static")
+#app.mount("/datasets", StaticFiles(directory="/media/ali/workspace/dataset"), name="datasets") # ubuntu
+#app.mount("/datasets", StaticFiles(directory="E:/workspace/python/deep-distribute/deepdistribute/media"), name="datasets") #windows
+#app.mount("/models", StaticFiles(directory="/media/ali/workspace/models"), name="datasets")
 
 
 task_queue = redis_client.get_task_queue()
