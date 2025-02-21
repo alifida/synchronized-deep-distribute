@@ -10,6 +10,7 @@ from app.controllers.trained_model_controller import trained_model_router
 from fastapi.staticfiles import StaticFiles
 import os
 from app.services.redis_service import redis_client
+from pathlib import Path
 
 
 #Disable gpu
@@ -21,6 +22,8 @@ app = FastAPI()
 #app.mount("/datasets", StaticFiles(directory="E:/workspace/python/deep-distribute/deepdistribute/media"), name="datasets") #windows
 #app.mount("/models", StaticFiles(directory="/media/ali/workspace/models"), name="datasets")
 
+
+DATASET_DIR = Path(__file__).parent / "static/tmp/datasets"
 
 task_queue = redis_client.get_task_queue()
 

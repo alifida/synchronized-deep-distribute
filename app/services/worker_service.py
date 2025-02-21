@@ -6,7 +6,7 @@ from app.helpers.weights_helper import aggregate
 from .redis_service import redis_client
 from app.services.dataset_service import DatasetService
 import time
-
+from app.helpers.util import get_dataset_path
 
 #from app.services.model_loader import load_model  # Hypothetical helper to load models dynamically
 from app.services.keras_catalog_service import KerasCatalogService as kerasService
@@ -37,8 +37,9 @@ class WorkerService:
 
         # Start downloading images in the background
         #asyncio.create_task(DatasetService.download_images(job_id, image_urls))
+        download_started_at = time.time()
         await DatasetService.download_images(job_id, examples)
-
+        download_ended_at =  time.time()
         # Start training in the background
         asyncio.create_task(WorkerService.start_training(worker_id, job_id))
 
@@ -49,6 +50,10 @@ class WorkerService:
         """
         Start training using the provided model and images.
         """
+
+
+        dataset_dir = get_dataset_path(job_id)
+
         training_stats = {
             "training_started_at": time.time(),
             "status" : "started"
@@ -100,6 +105,10 @@ class WorkerService:
             auc_metric = tf.keras.metrics.AUC()
             f1_score = tf.keras.metrics.Mean()  # Custom F1 score tracking (manual aggregation)
 
+
+            
+            
+
             for epoch in range(total_epoch):
                 print(f"Starting epoch {epoch + 1}/{total_epoch}")
                 images_q = deque(init_params["dataset"]["images"])
@@ -110,7 +119,9 @@ class WorkerService:
                     # Simulate loading and preprocessing the image
                     example = images_q[0]
 
-                    image = redis_client.get_image_data(job_id, example["url"])
+                    #image = redis_client.get_image_data(job_id, example["url"])
+                    
+                    image = DatasetService.load_image_from_disk(dataset_dir,job_id,example["url"])
                     if not image:
                         # Image is not available/downloaded; move it to the end of the queue
                         images_q.append(images_q.popleft())
@@ -125,6 +136,8 @@ class WorkerService:
                         # Start the thread
                         #fetch_weight_thread.start()
                         # Preprocess image
+
+
                         image_tensor = tf.image.decode_image(image, channels=3)
                         image_tensor = tf.image.resize(image_tensor, (150, 150))
                         image_tensor = tf.expand_dims(image_tensor / 255.0, axis=0)  # Normalize and batch
@@ -235,5 +248,6 @@ class WorkerService:
             training_stats ["training_ended_at"] = time.time()
             await submit_stats(parameter_sever_url, worker_id=worker_id, job_id=job_id,  stats=training_stats)
             redis_client.clear_job_context(job_id)  # Clean up context
+            DatasetService.delete_dataset(dataset_dir)
 
 
