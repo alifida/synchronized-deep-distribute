@@ -59,7 +59,7 @@ class WorkerService:
 
             init_params = job_context["init_params"]
             total_epoch = init_params.get("total_epoch", 1)
-
+            parameter_sever_url = init_params["parameter_sever_url"]
 
 
 
@@ -68,10 +68,15 @@ class WorkerService:
             if isinstance(learning_rate, str):
                 try:
                     learning_rate = float(learning_rate)
+                except ValueError:
+                    print("Error: Invalid value for epoch, unable to convert to float.")
+                    learning_rate = 0.001  
+
+            if isinstance(total_epoch, str):
+                try:
                     total_epoch = int(total_epoch)
                 except ValueError:
                     print("Error: Invalid value for learning_rate, unable to convert to float.")
-                    learning_rate = 0.001  
                     total_epoch = 1
 
             # Load model dynamically based on model_name
@@ -156,7 +161,7 @@ class WorkerService:
 
                         # Submit updated weights to parameter server
                         #await submit_weights_task(job_id=job_id, weights=model.trainable_variables)
-                        await submit_gradients(worker_id, job_id, gradients)
+                        await submit_gradients(parameter_sever_url, worker_id, job_id, gradients)
                         #asyncio.create_task(submit_weights(job_id=job_id, weights=model.trainable_variables))
 
                         #submit_weight_thread = threading.Thread(target=submit_weights, args=(job_id, model.trainable_variables))
@@ -164,7 +169,7 @@ class WorkerService:
                         #submit_weight_thread.start()
 
                         # Fetch the latest aggregated weights and update the model
-                        latest_gradients = await fetch_latest_gradients(worker_id=worker_id, job_id=job_id)
+                        latest_gradients = await fetch_latest_gradients(parameter_sever_url, worker_id=worker_id, job_id=job_id)
                         if latest_gradients:
                             optimizer.apply_gradients(zip(latest_gradients, model.trainable_variables))
 
@@ -177,7 +182,7 @@ class WorkerService:
                                 "auc" : auc_metric.result().numpy(),
                                 "f1_final" : f1_score.result().numpy(),
                             }
-                            await submit_metrics(worker_id,job_id, metrics)
+                            await submit_metrics(parameter_sever_url, worker_id,job_id, metrics)
 
                         '''
                         
@@ -219,7 +224,7 @@ class WorkerService:
             }
             # send
             print(f"Training complete for job {job_id}. Metrics: {metrics}")
-            await submit_weights(worker_id=worker_id, job_id=job_id, weights=model.trainable_variables)
+            await submit_weights(parameter_sever_url, worker_id=worker_id, job_id=job_id, weights=model.trainable_variables)
             training_stats["status"] = "completed"
         except Exception as e:
             print(f"Error during training for job {job_id}: {str(e)}")
@@ -228,7 +233,7 @@ class WorkerService:
         finally:
             #training_stats ["epoch"] = epoch
             training_stats ["training_ended_at"] = time.time()
-            await submit_stats(worker_id=worker_id, job_id=job_id,  stats=training_stats)
+            await submit_stats(parameter_sever_url, worker_id=worker_id, job_id=job_id,  stats=training_stats)
             redis_client.clear_job_context(job_id)  # Clean up context
 
 

@@ -4,7 +4,7 @@ from app.dao.training_job_dao import TrainingJobDAO
 from app.db.database import get_db  # Import the database session dependency
 
 from app.services.parameter_service import ParameterService
-
+from fastapi import Request
 
 training_job_router = APIRouter()
  
@@ -14,7 +14,7 @@ training_job_router = APIRouter()
  
 
 @training_job_router.post("/start/{job_id}")
-async def init_training(job_id:int, data: dict):
+async def init_training(request: Request,job_id:int, data: dict):
     """
     
     """
@@ -22,7 +22,10 @@ async def init_training(job_id:int, data: dict):
 
     if not True:
         raise HTTPException(status_code=400, detail="Failed to initialize training.")
+
+    base_url = str(request.url).split('/training-jobs/start')[0]
     
+    data["parameter_sever_url"] = base_url
     await ParameterService.start_training_job(data)
     
     return {"status": "success", "message": "Worker initialized and training started."}

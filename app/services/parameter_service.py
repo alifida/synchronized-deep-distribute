@@ -25,6 +25,7 @@ class ParameterService:
 
 
     async def start_training_job(data):
+        parameter_sever_url = data.get("parameter_sever_url")
         init_params = data.get('init_params')
         job_data = init_params.get('job_data')
         parameter_settings = job_data.get('parameter_settings')
@@ -40,7 +41,7 @@ class ParameterService:
 
         cluster_id = parameter_settings.get("cluster")
         async for db in get_db():
-            workers =await ClusterNodesDAO.fetch_workers_by_cluster_id(db, cluster_id)
+            workers = await ClusterNodesDAO.fetch_workers_by_cluster_id(db, cluster_id)
 
         print("-------------------------------------------")
         print("-------------------------------------------")
@@ -54,10 +55,10 @@ class ParameterService:
 
         print("--------------------")
 
-        response = await ParameterService.distribute_training_amoung_workers(subsets, workers, parameter_settings, f"job_id_{job_data['job_id']}")
+        response = await ParameterService.distribute_training_amoung_workers(subsets, workers, parameter_settings, f"job_id_{job_data['job_id']}", parameter_sever_url)
 
     @staticmethod
-    async def distribute_training_amoung_workers(subsets, workers, parameter_settings, job_id):
+    async def distribute_training_amoung_workers(subsets, workers, parameter_settings, job_id, parameter_sever_url):
         # Clean the parameter settings
         parameter_settings['total_epoch'] = parameter_settings['epochs']
         
@@ -67,7 +68,7 @@ class ParameterService:
         del parameter_settings["epochs"]
          
         payload = parameter_settings
-       
+        payload["parameter_sever_url"] = str(parameter_sever_url)
 
         responses = {}
 
