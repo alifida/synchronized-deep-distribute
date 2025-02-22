@@ -98,8 +98,8 @@ class DatasetService:
         
         # Generate the image filename based on job_id and URL
         image_filename = f"{url.split('/')[-1]}"  # Using the last part of the URL as filename
-        image_path = os.path.join(dataset_dir, image_filename)
 
+        image_path = os.path.join(dataset_dir, image_filename)
         # Try to read the image from disk
         try:
             with open(image_path, "rb") as image_file:

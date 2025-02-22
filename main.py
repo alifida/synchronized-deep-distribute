@@ -24,6 +24,7 @@ app = FastAPI()
 
 
 DATASET_DIR = Path(__file__).parent / "static/tmp/datasets"
+MODELS_DIR = Path(__file__).parent / "static/trained_models"
 
 task_queue = redis_client.get_task_queue()
 

@@ -2,7 +2,7 @@ import re
 import json
 import aiohttp
 from app.db.database import get_db
-from app.config.settings import TRAINED_MODELS_DIR
+#from app.config.settings import TRAINED_MODELS_DIR
 from app.helpers.weights_helper import aggregate, aggregate_gradients
 import pickle
 import os
@@ -17,6 +17,8 @@ from app.dao.cluster_nodes_dao import ClusterNodesDAO
 from app.models.cluster_node import ClusterNode
 from typing import List, Dict
 import math
+
+from app.helpers.util import prepare_path
 class ParameterService:
     weights_store = {}  # In-memory storage for weights by job_id
     gradients_store = {}  # In-memory storage for gradients by job_id
@@ -55,7 +57,7 @@ class ParameterService:
 
         print("--------------------")
 
-        response = await ParameterService.distribute_training_amoung_workers(subsets, workers, parameter_settings, f"job_id_{job_data['job_id']}", parameter_sever_url)
+        response = await ParameterService.distribute_training_amoung_workers(subsets, workers, parameter_settings, f"{job_data['job_id']}", parameter_sever_url)
 
     @staticmethod
     async def distribute_training_amoung_workers(subsets, workers, parameter_settings, job_id, parameter_sever_url):
@@ -357,8 +359,16 @@ class ParameterService:
             if not aggregated_weights:
                 raise ValueError(f"No weights found for job {job_id}.")
 
+
+
+
+
             # Save final model to a file
-            model_file_path = f"{TRAINED_MODELS_DIR}/{job_id}_final_model.pkl"
+            from main import MODELS_DIR
+            models_path = f"{MODELS_DIR}/{job_id}/"
+            
+            prepare_path(models_path)
+            model_file_path = f"{models_path}/final_model.pkl"
             with open(model_file_path, "wb") as model_file:
                 pickle.dump(aggregated_weights, model_file)
 
@@ -377,7 +387,7 @@ class ParameterService:
 
             async for db in get_db():  # Await the async generator
 
-                training_job = await TrainingJobDAO.fetch_training_job_by_id(db, job_id)
+                training_job = await TrainingJobDAO.fetch_training_job_by_id(db, int(job_id))
                 if not training_job:
                     training_job = TrainingJob()
                     training_job.job_name = job_id

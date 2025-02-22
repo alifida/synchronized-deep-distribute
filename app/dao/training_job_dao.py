@@ -22,7 +22,7 @@ class TrainingJobDAO:
     @staticmethod
     async def fetch_training_job_by_id(db: AsyncSession, job_id: int):
         # Query to fetch a single job by ID
-        query = select(TrainingJob).filter(TrainingJob.job_name == job_id)
+        query = select(TrainingJob).filter(TrainingJob.id == job_id)
         result = await db.execute(query)
         return result.scalars().one_or_none()  # Returns the first result or None if not found
 
