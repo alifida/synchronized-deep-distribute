@@ -28,31 +28,28 @@ async def submit_weights(parameter_server_url, worker_id: str, job_id: str, weig
     """
     Submit the updated weights to the parameter server with compression for efficiency.
     """
-    print("------submit_weights called ----------------")
+    #print("------submit_weights called ----------------")
     try:
         # Normalize to numpy arrays before serialization
         normalized_weights = [weight.numpy() if isinstance(weight, tf.Variable) else weight for weight in weights]
-        print("-----------1")
         # Serialize and compress weights
         compressed_weights = serialize_weights(normalized_weights)
         #print (compressed_weights)
-        print("-----------2")
         async with aiohttp.ClientSession() as session:
-            print("-----------3")
             async with session.post(
                 f"{parameter_server_url}{SUBMIT_WEIGHTS_URL}/{worker_id}/{job_id}",
                 data=compressed_weights,  # Send compressed binary data
                 headers={"Content-Encoding": "gzip", "Content-Type": "application/octet-stream"}
             ) as response:
-                print("-----------4")
                 if response.status == 200:
-                    print("-----------5")
-                    print(f"Weights successfully submitted for job {job_id}")
+                    pass
+                    #print("-----------5")
+                    #print(f"Weights successfully submitted for job {job_id}")
                 else:
-                    print("-----------6")
-                    print(f"Error submitting weights for job {job_id}: {response.status}")
+                    #print("-----------6")
+                    #print(f"Error submitting weights for job {job_id}: {response.status}")
                     response_text = await response.text()
-                    print(f"Response: {response_text}")
+                    #print(f"Response: {response_text}")
     except Exception as e:
         print(f"Exception occurred while submitting weights for job {job_id}: {e}")
 
@@ -77,15 +74,16 @@ async def fetch_latest_weights(parameter_server_url, worker_id: str, job_id: str
                         #
                         # Convert to tf.Variable for consistency
                         #latest_weights = [tf.Variable(weight) for weight in latest_weights]
-                        print(f"Latest weights updated in context for job {job_id}")
+                        #print(f"Latest weights updated in context for job {job_id}")
                     else:
-                        print(f"No weights received from parameter server for job {job_id}")
+                        pass
+                        #print(f"No weights received from parameter server for job {job_id}")
 
 
                 else:
-                    print(f"Error fetching weights for job {job_id}: {response.status}")
+                    #print(f"Error fetching weights for job {job_id}: {response.status}")
                     response_text = await response.text()
-                    print(f"Response: {response_text}")
+                    #print(f"Response: {response_text}")
         except (gzip.BadGzipFile, pickle.PickleError) as e:
             print(f"Error decompressing or deserializing weights for job {job_id}: {e}")
         except Exception as e:

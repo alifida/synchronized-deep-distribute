@@ -14,9 +14,15 @@ from app.models.trained_model import TrainedModel
 import datetime
 from app.models.training_job import TrainingJob
 from app.dao.cluster_nodes_dao import ClusterNodesDAO
+from app.services.dataset_service import DatasetService
 from app.models.cluster_node import ClusterNode
 from typing import List, Dict
 import math
+import tensorflow as tf
+import os
+import numpy as np
+
+
 
 from app.helpers.util import prepare_path
 class ParameterService:
@@ -45,17 +51,10 @@ class ParameterService:
         async for db in get_db():
             workers = await ClusterNodesDAO.fetch_workers_by_cluster_id(db, cluster_id)
 
-        print("-------------------------------------------")
-        print("-------------------------------------------")
-        print("-------------------------------------------")
-        print("-------------------------------------------")
-
-        print (json.dumps(classwise_details))
+         
 
         subsets = await ParameterService.divide_dataset_classwise(classwise_details, workers, dataset_host_url)
-        
-
-        print("--------------------")
+         
 
         response = await ParameterService.distribute_training_amoung_workers(subsets, workers, parameter_settings, f"{job_data['job_id']}", parameter_sever_url)
 
@@ -199,8 +198,14 @@ class ParameterService:
 
             # Store the averaged metrics in overall_metrics
             ParameterService.metrics_store[job_id]["overall_metrics"] = aggregated_metrics
-
-            print(f"Aggregated metrics for job {job_id}: {aggregated_metrics}")
+            async for db in get_db():
+                training_job = await TrainingJobDAO.fetch_training_job_by_id(db, int(job_id))
+                training_job.training_log = json.dumps(aggregated_metrics)
+                history = json.loads(training_job.training_log_history) if training_job.training_log_history else []
+                history.append(training_job.training_log)
+                training_job.training_log_history = json.dumps(history)
+                await TrainingJobDAO.save(db, training_job)
+            #print(f"Aggregated metrics for job {job_id}: {aggregated_metrics}")
             return aggregated_metrics
 
         except Exception as e:
@@ -286,7 +291,6 @@ class ParameterService:
             if await ParameterService.all_workers_done(job_id):
                 await ParameterService.save_trained_model(job_id)
 
-
             return "success"
 
         except Exception as e:
@@ -365,13 +369,44 @@ class ParameterService:
 
             # Save final model to a file
             from main import MODELS_DIR
-            models_path = f"{MODELS_DIR}/{job_id}/"
+            models_path = f"{MODELS_DIR}/{job_id}"
             
             prepare_path(models_path)
-            model_file_path = f"{models_path}/final_model.pkl"
-            with open(model_file_path, "wb") as model_file:
-                pickle.dump(aggregated_weights, model_file)
+            
 
+            from app.services.keras_catalog_service import KerasCatalogService
+
+            # Get job details
+            async for db in get_db():
+                training_job = await TrainingJobDAO.fetch_training_job_by_id(db, int(job_id))
+                dataset_img = await DatasetImgDAO.fetch_dataset_image_by_id(db, training_job.dataset_img_id)
+
+            # Get model architecture
+            classes = await DatasetService.get_class_labels(dataset_img.extracted_path) 
+            algo_name = training_job.algo
+            base_model = KerasCatalogService.get_model_object(algo_name)
+            base_model.trainable = True
+
+            # Build full model
+            model = tf.keras.Sequential([
+                base_model,
+                tf.keras.layers.GlobalAveragePooling2D(),
+                tf.keras.layers.Dense(len(classes), activation="softmax")  # Multi-class classification
+            ])
+
+
+
+            # Apply worker weights
+            model.set_weights(aggregated_weights)
+
+            # Save model in H5 format
+            model_file_path = f"{models_path}/final_model.keras"
+            model.save(model_file_path) 
+
+
+             
+            evaluated_metrics = await evaluate_model(job_id, model_file_path, dataset_img.extracted_path_test)
+             
             # Prepare and return training details
             result = {
                 "job_id": job_id,
@@ -382,12 +417,13 @@ class ParameterService:
                 "total_epochs": total_epochs,
                 "individual_metrics": individual_metrics,
                 "overall_metrics": overall_metrics,
+                "evaluated_on_test": evaluated_metrics,
                 "model_file_path": model_file_path
             }
 
             async for db in get_db():  # Await the async generator
 
-                training_job = await TrainingJobDAO.fetch_training_job_by_id(db, int(job_id))
+                #training_job = await TrainingJobDAO.fetch_training_job_by_id(db, int(job_id))
                 if not training_job:
                     training_job = TrainingJob()
                     training_job.job_name = job_id
@@ -399,7 +435,7 @@ class ParameterService:
                 await TrainingJobDAO.save(db, training_job)
                 current_time = datetime.datetime.now()
                 dataset  = await DatasetImgDAO.fetch_dataset_image_by_id(db, training_job.dataset_img_id)
-                class_labels = await get_class_labels(dataset.extracted_path)
+                class_labels = await DatasetService.get_class_labels(dataset.extracted_path)
                 trained_model = TrainedModel(
                     model_file=model_file_path,
                     description=training_job.algo,
@@ -413,12 +449,12 @@ class ParameterService:
                 )
 
                 await TrainedModelDAO.save_trained_model(db, trained_model)
-
+                return model_file_path
         except Exception as e:
             print(f"Error in preparing trained model details for job {job_id}: {str(e)}")
-            return {"status": "error", "message": str(e)}
-
-
+            return None
+        
+       
 
 def convert_pkl_to_h5(algo_name: str, pkl_file_path: str):
     try:
@@ -434,8 +470,8 @@ def convert_pkl_to_h5(algo_name: str, pkl_file_path: str):
         # Load the weights into the model
         base_model.set_weights(model_weights)
 
-        # Prepare the path for the .h5 file (same name as .pkl but with .h5 extension)
-        h5_file_path = os.path.splitext(pkl_file_path)[0] + '.h5'
+        # Prepare the path for the .keras file
+        h5_file_path = os.path.splitext(pkl_file_path)[0] + '.keras'
 
         # Save the model in .h5 format
         base_model.save(h5_file_path)
@@ -447,8 +483,70 @@ def convert_pkl_to_h5(algo_name: str, pkl_file_path: str):
         return None
 
 
-async def get_class_labels(directory_path):
-    classes=[]
-    for label in os.listdir(directory_path):
-        classes.append(os.path.join(directory_path, label))
-    return classes
+
+
+
+
+async def evaluate_model(job_id, model_file_path, test_data_dir):
+    """Evaluates the trained model on a test dataset with multiple classes."""
+    from app.services.keras_catalog_service import KerasCatalogService
+    from .redis_service import redis_client
+    
+
+    classes = await DatasetService.get_class_labels(test_data_dir)
+    job_context = redis_client.get_job_context(job_id)
+    algo_name = job_context['init_params'] ["algo_name"]
+    # Reconstruct the model using the architecture from KerasCatalogService
+    base_model = KerasCatalogService.get_model_object(algo_name)  
+    base_model.trainable = True  
+
+    # Create the full model
+    model = tf.keras.Sequential([
+        base_model,
+        tf.keras.layers.GlobalAveragePooling2D(),
+        tf.keras.layers.Dense(len(classes), activation='softmax')  # Multi-class classification
+    ])
+
+    
+    model = tf.keras.models.load_model(model_file_path)  # Load full model
+
+    # Load test dataset
+    test_dataset = tf.keras.preprocessing.image_dataset_from_directory(
+        test_data_dir,
+        image_size=(150, 150),  # Ensure this matches training
+        batch_size=32,
+        label_mode='categorical'  # Multi-class classification
+    )
+
+    # Define evaluation metrics
+    accuracy_metric = tf.keras.metrics.CategoricalAccuracy()
+    precision_metric = tf.keras.metrics.Precision()
+    recall_metric = tf.keras.metrics.Recall()
+    auc_metric = tf.keras.metrics.AUC(multi_label=True)
+    f1_score_metric = tf.keras.metrics.Mean()
+
+    for images, labels in test_dataset:
+        predictions = model(images, training=False)
+
+        accuracy_metric.update_state(labels, predictions)
+        precision_metric.update_state(labels, predictions)
+        recall_metric.update_state(labels, predictions)
+        auc_metric.update_state(labels, predictions)
+
+        # Compute F1 score
+        precision = precision_metric.result().numpy()
+        recall = recall_metric.result().numpy()
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+        f1_score_metric.update_state(f1)
+
+    # Collect final evaluation results
+    evaluation_results = {
+        "accuracy": float(accuracy_metric.result().numpy()),
+        "precision": float(precision_metric.result().numpy()),
+        "recall": float(recall_metric.result().numpy()),
+        "auc": float(auc_metric.result().numpy()),
+        "f1_score": float(f1_score_metric.result().numpy()),
+    }
+
+    print(f"Evaluation Results: {evaluation_results}")
+    return evaluation_results

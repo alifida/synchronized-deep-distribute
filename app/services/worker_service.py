@@ -7,6 +7,10 @@ from .redis_service import redis_client
 from app.services.dataset_service import DatasetService
 import time
 from app.helpers.util import get_dataset_path
+from app.db.database import get_db
+from app.dao.dataset_Img_dao import DatasetImgDAO
+from app.dao.training_job_dao import  TrainingJobDAO
+
 
 #from app.services.model_loader import load_model  # Hypothetical helper to load models dynamically
 from app.services.keras_catalog_service import KerasCatalogService as kerasService
@@ -84,10 +88,17 @@ class WorkerService:
                     print("Error: Invalid value for learning_rate, unable to convert to float.")
                     total_epoch = 1
 
+            async for db in get_db():
+                training_job = await TrainingJobDAO.fetch_training_job_by_id(db, int(job_id))
+                dataset_img = await DatasetImgDAO.fetch_dataset_image_by_id(db, training_job.dataset_img_id)
+
+            classes = await DatasetService.get_class_labels(dataset_img.extracted_path)
+
             # Load model dynamically based on model_name
             base_model = kerasService.get_model_object(init_params['algo_name'])  # Get pre-trained model
             base_model.trainable = True  # Allow fine-tuning
 
+            """
             # Add classification head
             model = tf.keras.Sequential([
                 base_model,
@@ -95,8 +106,16 @@ class WorkerService:
                 tf.keras.layers.Dense(1)  # Binary classification output
             ])
 
+            """
+
+             # Build full model
+            model = tf.keras.Sequential([
+                base_model,
+                tf.keras.layers.GlobalAveragePooling2D(),
+                tf.keras.layers.Dense(len(classes), activation="softmax")  # Multi-class classification
+            ])
             optimizer = tf.keras.optimizers.Adam(learning_rate)
-            loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+            loss_fn = tf.keras.losses.CategoricalCrossentropy()
 
             # Initialize metrics
             accuracy_metric = tf.keras.metrics.BinaryAccuracy()
@@ -145,8 +164,8 @@ class WorkerService:
                         # Fetch label
                         #label = init_params.get("label", 0)  # Assume binary label for simplicity
                         label = example["label"]
-                        label_tensor = tf.constant([[label]], dtype=tf.float32)  # Match output shape (batch_size, 1)
-
+                        label_tensor = tf.one_hot(label, depth=len(classes))
+                        label_tensor = tf.reshape(label_tensor, (1, len(classes)))
                         # Perform a training step
                         with tf.GradientTape() as tape:
                             predictions = model(image_tensor, training=True)
@@ -170,7 +189,7 @@ class WorkerService:
                             f1 = 0.0
                         f1_score.update_state(f1)
 
-                        print(f"Processed image. Loss: {loss.numpy()}")
+                        #print(f"Processed image. Loss: {loss.numpy()}")
 
                         # Submit updated weights to parameter server
                         #await submit_weights_task(job_id=job_id, weights=model.trainable_variables)
@@ -218,7 +237,7 @@ class WorkerService:
 
                         images_q.popleft()
                         processed_images_count +=1
-                        print(f"------ example processed: {processed_images_count}")
+                        #print(f"------ example processed: {processed_images_count}")
 
             # Final metrics computation
             accuracy = accuracy_metric.result().numpy()
@@ -236,8 +255,18 @@ class WorkerService:
                 'f1_score': f1_final
             }
             # send
-            print(f"Training complete for job {job_id}. Metrics: {metrics}")
-            await submit_weights(parameter_sever_url, worker_id=worker_id, job_id=job_id, weights=model.trainable_variables)
+
+            #print(f"Training complete for job {job_id}. Metrics: {metrics}")
+            """
+            print("=============================")
+            print("=============================")
+            print("===worker model  summary=====")
+            model.summary()
+            print("=============================")
+            print("=============================")
+            """
+
+            await submit_weights(parameter_sever_url, worker_id=worker_id, job_id=job_id, weights=model.get_weights())
             training_stats["status"] = "completed"
         except Exception as e:
             print(f"Error during training for job {job_id}: {str(e)}")

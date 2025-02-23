@@ -123,3 +123,10 @@ class DatasetService:
                 print(f"Error while deleting the directory: {e}")
         else:
             print(f"The directory {dataset_dir} does not exist or is not a valid directory.")
+
+    @staticmethod
+    async def get_class_labels(directory_path):
+        classes=[]
+        for label in os.listdir(directory_path):
+            classes.append(os.path.join(directory_path, label))
+        return classes

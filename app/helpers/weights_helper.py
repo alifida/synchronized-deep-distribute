@@ -6,7 +6,40 @@ import numpy as np
 import tempfile
 
 
+
 def aggregate(existing, fresh):
+    """
+    Aggregate weights using simple averaging.
+
+    Args:
+        existing (list): List of existing weight arrays.
+        fresh (list): List of fresh weight arrays.
+
+    Returns:
+        list: Aggregated weights as NumPy arrays.
+    """
+    if len(existing) != len(fresh):
+        raise ValueError("The length of existing and fresh weights must match.")
+
+    aggregated_weights = []
+    for existing_var, fresh_var in zip(existing, fresh):
+        # Convert to numpy if needed
+        existing_values = existing_var.numpy() if isinstance(existing_var, tf.Variable) else existing_var
+        fresh_values = fresh_var.numpy() if isinstance(fresh_var, tf.Variable) else fresh_var
+
+        # Ensure the shapes match
+        if existing_values.shape != fresh_values.shape:
+            raise ValueError(f"Shape mismatch: {existing_values.shape} vs {fresh_values.shape}")
+
+        # Perform element-wise averaging
+        aggregated_values = (existing_values + fresh_values) / 2
+
+        aggregated_weights.append(aggregated_values)  # Returning NumPy array, not tf.Variable
+
+    return aggregated_weights
+
+
+def aggregate___(existing, fresh):
     """
     Aggregate weights using simple averaging.
 

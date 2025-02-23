@@ -16,7 +16,7 @@ async def submit_gradients(request: Request, worker_id: str, job_id: str):
     """
         Endpoint to receive gradients from a worker and aggregate them.
         """
-    print(f"-----submit_gradients___by worker --{worker_id}--{job_id}")
+    #print(f"-----submit_gradients___by worker --{worker_id}--{job_id}")
     try:
         # Read binary gzipped payload
         compressed_data = await request.body()
@@ -66,7 +66,7 @@ async def submit_weights(request: Request, worker_id: str,  job_id: str):
     """
     Endpoint to receive weights from a worker and aggregate them.
     """
-    print(f"-----sumbmit_weight___by worker --{worker_id}--{job_id}")
+    #print(f"-----sumbmit_weight___by worker --{worker_id}--{job_id}")
     try:
         # Read binary gzipped payload
         compressed_data = await request.body()
@@ -121,7 +121,7 @@ async def submit_metrics(request: Request, worker_id: str, job_id: str, metrics:
     """
     Endpoint to receive metrics from a worker and aggregate them.
     """
-    print(f"----- submit_metrics by worker -- {worker_id} -- job {job_id}")
+    #print(f"----- submit_metrics by worker -- {worker_id} -- job {job_id}")
     try:
         # Parse the incoming JSON data dynamically as a dictionary
         #metrics = await request.json()
@@ -168,7 +168,7 @@ async def submit_stats(request: Request, worker_id: str, job_id: str, stats: dic
     """
     Endpoint to receive stats from a worker and aggregate them.
     """
-    print(f"----- submit_stats by worker -- {worker_id} -- job {job_id}")
+    #print(f"----- submit_stats by worker -- {worker_id} -- job {job_id}")
     try:
 
         status = await ParameterService.update_stats(worker_id, job_id, stats)
@@ -185,7 +185,7 @@ async def get_stats(request: Request, job_id: str, stats: dict):
     """
     Endpoint returns stats of a job
     """
-    print(f"----- get_stats for -- job {job_id}")
+    #print(f"----- get_stats for -- job {job_id}")
     try:
 
         stats = await ParameterService.get_stats( job_id)

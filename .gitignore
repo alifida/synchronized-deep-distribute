@@ -3,3 +3,5 @@ venv/
 __pycache__
 venv_ubuntu
 *.pkl
+static/tmp/datasets/
+static/trained_models/
