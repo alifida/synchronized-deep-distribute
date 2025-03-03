@@ -93,12 +93,7 @@ class WorkerService:
                 except ValueError:
                     print("Error: Invalid value for learning_rate, unable to convert to float.")
                     total_epoch = 1
-            '''
-            async for db in get_db():
-                training_job = await TrainingJobDAO.fetch_training_job_by_id(db, int(job_id))
-                dataset_img = await DatasetImgDAO.fetch_dataset_image_by_id(db, training_job.dataset_img_id)
-            classes = await DatasetService.get_class_labels(dataset_img.extracted_path)
-            '''
+      
 
             # Load model dynamically based on model_name
             base_model = kerasService.get_model_object(init_params['algo_name'])  # Get pre-trained model
@@ -144,23 +139,11 @@ class WorkerService:
                     # Simulate loading and preprocessing the image
                     example = images_q[0]
 
-                    #image = redis_client.get_image_data(job_id, example["url"])
-                    
                     image = DatasetService.load_image_from_disk(dataset_dir,job_id,example["url"])
                     if not image:
                         # Image is not available/downloaded; move it to the end of the queue
                         images_q.append(images_q.popleft())
                     else:
-
-                        #latest_gradients = await fetch_latest_gradients(worker_id=worker_id, job_id=job_id)
-
-                        # Fetch latest weights
-                        #await fetch_latest_weights_task(job_id=job_id)
-                        #asyncio.create_task(fetch_latest_weights(job_id=job_id))
-                        #fetch_weight_thread = threading.Thread(target=fetch_latest_weights, args=(job_id))
-                        # Start the thread
-                        #fetch_weight_thread.start()
-                        # Preprocess image
 
 
                         image_tensor = tf.image.decode_image(image, channels=3)
@@ -197,15 +180,8 @@ class WorkerService:
 
                         #print(f"Processed image. Loss: {loss.numpy()}")
 
-                        # Submit updated weights to parameter server
-                        #await submit_weights_task(job_id=job_id, weights=model.trainable_variables)
                         await submit_gradients(parameter_sever_url, worker_id, job_id, gradients)
-                        #asyncio.create_task(submit_weights(job_id=job_id, weights=model.trainable_variables))
-
-                        #submit_weight_thread = threading.Thread(target=submit_weights, args=(job_id, model.trainable_variables))
-                        # Start the thread
-                        #submit_weight_thread.start()
-
+                         
                         # Fetch the latest aggregated weights and update the model
                         latest_gradients = await fetch_latest_gradients(parameter_sever_url, worker_id=worker_id, job_id=job_id)
                         if latest_gradients:
@@ -221,24 +197,6 @@ class WorkerService:
                                 "f1_final" : f1_score.result().numpy(),
                             }
                             await submit_metrics(parameter_sever_url, worker_id,job_id, metrics)
-
-                        '''
-                        
-                        latest_weights = redis_client.get_latest_weights(job_id)
-                        if not latest_weights:
-                            latest_weights = model.trainable_variables
-
-                        # Aggregate weights from the parameter server with current iteration weights
-                        latest_weights = aggregate(latest_weights, model.trainable_variables)
-                        if latest_weights:
-                            for var, latest in zip(model.trainable_variables, latest_weights):
-                                var.assign(latest)
-                        '''
-
-
-
-
-
 
 
                         images_q.popleft()
@@ -260,17 +218,6 @@ class WorkerService:
                 'auc': auc,
                 'f1_score': f1_final
             }
-            # send
-
-            #print(f"Training complete for job {job_id}. Metrics: {metrics}")
-            """
-            print("=============================")
-            print("=============================")
-            print("===worker model  summary=====")
-            model.summary()
-            print("=============================")
-            print("=============================")
-            """
 
             await submit_weights(parameter_sever_url, worker_id=worker_id, job_id=job_id, weights=model.get_weights())
             training_stats["status"] = "completed"
