@@ -127,7 +127,7 @@ class ParameterService:
             # Step 4: Assign images to workers
             for idx, worker in enumerate(workers):
                 worker_label = ParameterService.get_worker_key(worker)
-                
+                worker_datasets[worker_label]["dataset"]["classes"] = class_labels
                 # Slice the list of preview images for this worker
                 start_idx = idx * images_per_worker
                 end_idx = start_idx + images_per_worker
@@ -541,11 +541,11 @@ async def evaluate_model(job_id, model_file_path, test_data_dir):
 
     # Collect final evaluation results
     evaluation_results = {
-        "accuracy": float(accuracy_metric.result().numpy()),
-        "precision": float(precision_metric.result().numpy()),
-        "recall": float(recall_metric.result().numpy()),
-        "auc": float(auc_metric.result().numpy()),
-        "f1_score": float(f1_score_metric.result().numpy()),
+        "accuracy":float(f"{accuracy_metric.result().numpy():.6f}"),
+        "precision": float(f"{precision_metric.result().numpy():.6f}"),
+        "recall": float(f"{recall_metric.result().numpy():.6f}"),
+        "auc": float(f"{auc_metric.result().numpy():.6f}"),
+        "f1_score": float(f"{f1_score_metric.result().numpy():.6f}"),
     }
 
     print(f"Evaluation Results: {evaluation_results}")

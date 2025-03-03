@@ -24,30 +24,36 @@ class WorkerService:
         """
         Initialize worker with training parameters and start training.
         """
-        # Save context for the job
-        total_images = len(init_params["dataset"]["images"])
-        downloaded_images_count = 0     # Initially 0 images downloaded
-        processed_images_count = 0            # Initially 0 images processed (for training)
-        job_context = {
-            "init_params": init_params,
-            "total_images": total_images,
-            "downloaded_images_count": downloaded_images_count,
-            "processed_images_count": processed_images_count
-        }
+        try:
+            # Save context for the job
+            total_images = len(init_params["dataset"]["images"])
+            classes = init_params["dataset"]["classes"]
+            downloaded_images_count = 0     # Initially 0 images downloaded
+            processed_images_count = 0            # Initially 0 images processed (for training)
+            job_context = {
+                "init_params": init_params,
+                "total_images": total_images,
+                "downloaded_images_count": downloaded_images_count,
+                "processed_images_count": processed_images_count,
+                "classes": classes
+            }
 
-        #save in redis
-        redis_client.save_job_context(job_id, job_context)
-        examples = init_params["dataset"]["images"]
+            #save in redis
+            redis_client.save_job_context(job_id, job_context)
+            examples = init_params["dataset"]["images"]
 
-        # Start downloading images in the background
-        #asyncio.create_task(DatasetService.download_images(job_id, image_urls))
-        download_started_at = time.time()
-        await DatasetService.download_images(job_id, examples)
-        download_ended_at =  time.time()
-        # Start training in the background
-        asyncio.create_task(WorkerService.start_training(worker_id, job_id))
+            # Start downloading images in the background
+            #asyncio.create_task(DatasetService.download_images(job_id, image_urls))
+            download_started_at = time.time()
+            await DatasetService.download_images(job_id, examples)
+            download_ended_at =  time.time()
+            # Start training in the background
+            asyncio.create_task(WorkerService.start_training(worker_id, job_id))
 
-        return True
+            return True
+        except Exception as e:
+            print(f"Error during training for job {job_id}: {str(e)}")
+            return False
 
     @staticmethod
     async def start_training(worker_id:str, job_id: str):
@@ -69,7 +75,7 @@ class WorkerService:
             init_params = job_context["init_params"]
             total_epoch = init_params.get("total_epoch", 1)
             parameter_sever_url = init_params["parameter_sever_url"]
-
+            classes = job_context["classes"]
 
 
             # Initialize model
@@ -87,12 +93,12 @@ class WorkerService:
                 except ValueError:
                     print("Error: Invalid value for learning_rate, unable to convert to float.")
                     total_epoch = 1
-
+            '''
             async for db in get_db():
                 training_job = await TrainingJobDAO.fetch_training_job_by_id(db, int(job_id))
                 dataset_img = await DatasetImgDAO.fetch_dataset_image_by_id(db, training_job.dataset_img_id)
-
             classes = await DatasetService.get_class_labels(dataset_img.extracted_path)
+            '''
 
             # Load model dynamically based on model_name
             base_model = kerasService.get_model_object(init_params['algo_name'])  # Get pre-trained model
