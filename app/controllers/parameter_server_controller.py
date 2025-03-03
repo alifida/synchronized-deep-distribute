@@ -14,20 +14,19 @@ ps_router = APIRouter()
 @ps_router.post("/submit-gradients/{worker_id}/{job_id}")
 async def submit_gradients(request: Request, worker_id: str, job_id: str):
     """
-        Endpoint to receive gradients from a worker and aggregate them.
-        """
-    #print(f"-----submit_gradients___by worker --{worker_id}--{job_id}")
+    Endpoint to receive gradient deltas from a worker and apply updates.
+    """
     try:
         # Read binary gzipped payload
         compressed_data = await request.body()
-        worker_gradients = deserialize_weights(compressed_data)
+        delta_gradients = deserialize_weights(compressed_data)
 
-        # Call the aggregation logic
-        success = await ParameterService.aggregate_gradients(worker_id, job_id, worker_gradients)
+        # Call the update logic (apply delta gradients)
+        success = await ParameterService.update_gradients(worker_id, job_id, delta_gradients)
 
         if not success:
-            raise HTTPException(status_code=400, detail="Failed to aggregate gradients.")
-        return {"status": "success", "message": "Gradients aggregated successfully."}
+            raise HTTPException(status_code=400, detail="Failed to update gradients.")
+        return {"status": "success", "message": "Gradient updates applied successfully."}
 
     except (gzip.BadGzipFile, pickle.PickleError) as e:
         raise HTTPException(status_code=400, detail=f"Failed to process gradients: {e}")

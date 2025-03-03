@@ -254,6 +254,55 @@ class ParameterService:
         return ParameterService.weights_store.get(job_id)
 
 
+    @staticmethod
+    async def update_gradients(worker_id: str, job_id: str, delta_gradients: list):
+        """
+        Update gradients by applying the received delta gradients.
+        """
+        if job_id not in ParameterService.gradients_store:
+            # First submission: Store as initial gradients (assuming it's a full gradient)
+            ParameterService.gradients_store[job_id] = delta_gradients
+        else:
+            # Apply delta update
+            existing_gradients = ParameterService.gradients_store[job_id]
+            updated_gradients = ParameterService.apply_gradient_deltas(existing_gradients, delta_gradients)
+            ParameterService.gradients_store[job_id] = updated_gradients
+
+        return True
+
+    @staticmethod
+    def apply_gradient_deltas(existing, delta):
+        """
+        Apply delta updates to existing gradients.
+
+        Args:
+            existing (list): List of existing gradients as TensorFlow Tensors or numpy arrays.
+            delta (list): List of delta gradients as TensorFlow Tensors or numpy arrays.
+
+        Returns:
+            list: Updated gradients.
+        """
+        if len(existing) != len(delta):
+            raise ValueError("The length of existing and delta gradients must match.")
+
+        updated_gradients = []
+        for existing_grad, delta_grad in zip(existing, delta):
+            # Convert to numpy if needed
+            existing_values = existing_grad.numpy() if isinstance(existing_grad, tf.Tensor) else existing_grad
+            delta_values = delta_grad.numpy() if isinstance(delta_grad, tf.Tensor) else delta_grad
+
+            # Ensure shapes match
+            if existing_values.shape != delta_values.shape:
+                raise ValueError(f"Shape mismatch: {existing_values.shape} vs {delta_values.shape}")
+
+            # Apply delta update
+            updated_values = existing_values + delta_values
+
+            # Store as tf.Tensor for consistency
+            updated_gradients.append(tf.convert_to_tensor(updated_values))
+
+        return updated_gradients
+
 
     @staticmethod
     async def aggregate_gradients(worker_id: str, job_id: str, worker_gradients: dict):

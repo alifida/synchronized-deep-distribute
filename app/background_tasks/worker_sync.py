@@ -23,7 +23,6 @@ async def fetch_latest_weights_task(parameter_server_url, worker_id: str, job_id
     queue = redis_client.get_task_queue()
     queue.enqueue(fetch_latest_weights,parameter_server_url, worker_id, job_id, result_ttl=0)
 
-
 async def submit_weights(parameter_server_url, worker_id: str, job_id: str, weights: list):
     """
     Submit the updated weights to the parameter server with compression for efficiency.
@@ -103,33 +102,51 @@ async def fetch_latest_weights(parameter_server_url, worker_id: str, job_id: str
 
 
 ''' ================== GRADIENTS==================='''
-async def submit_gradients(parameter_server_url, worker_id:str, job_id: str, gradients: list):
+gradients_store={}
+async def submit_gradients(parameter_server_url, worker_id: str, job_id: str, gradients: list):
     """
-    Submit the computed gradients to the parameter server with compression for efficiency.
+    Submit the difference in gradients to the parameter server to reduce data transmission size.
     """
-    print("------submit_gradients called ----------------")
+    print("------submit_gradients with difference called ----------------")
+    
     try:
-
-
-        #gradients = sparsify_gradients(gradients)
-        # Normalize gradients to numpy arrays before serialization
+        # Normalize gradients to numpy arrays
         normalized_gradients = [grad.numpy() if isinstance(grad, tf.Tensor) else grad for grad in gradients]
-        # Serialize and compress gradients
-        compressed_gradients = serialize_weights(normalized_gradients)  # Using same serialization as weights
+        
+        # Get the latest stored gradients
+        previous_gradients = gradients_store.get("latest", None)
+        
+        if previous_gradients is not None:
+            # Compute gradient differences (delta)
+            delta_gradients = [curr - prev for curr, prev in zip(normalized_gradients, previous_gradients)]
+        else:
+            delta_gradients = normalized_gradients  # First-time submission sends full gradients
+
+        # Apply sparsification (optional: remove small values to compress further)
+        sparsity_threshold = 1e-5
+        delta_gradients = [np.where(np.abs(grad) > sparsity_threshold, grad, 0) for grad in delta_gradients]
+
+        # Serialize and compress the delta gradients
+        compressed_gradients = serialize_weights(delta_gradients)
+
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f"{parameter_server_url}{SUBMIT_GRADIENTS_URL}/{worker_id}/{job_id}",
-                data=compressed_gradients,  # Send compressed binary data
+                data=compressed_gradients,
                 headers={"Content-Encoding": "gzip", "Content-Type": "application/octet-stream"}
             ) as response:
                 if response.status == 200:
-                    print(f"Gradients successfully submitted for job {job_id}")
+                    print(f"Delta gradients successfully submitted for job {job_id}")
+                    # Update stored gradients
+                    gradients_store["latest"] = normalized_gradients
                 else:
                     print(f"Error submitting gradients for job {job_id}: {response.status}")
                     response_text = await response.text()
                     print(f"Response: {response_text}")
+
     except Exception as e:
         print(f"Exception occurred while submitting gradients for job {job_id}: {e}")
+
 
 async def fetch_latest_gradients(parameter_server_url, worker_id: str, job_id: str):
     """
@@ -148,6 +165,7 @@ async def fetch_latest_gradients(parameter_server_url, worker_id: str, job_id: s
 
                         redis_client.update_gradients(job_id, latest_gradients)
                         print(f"Latest gradients updated in context for job {job_id}")
+                        gradients_store["latest"] = latest_gradients
                         return latest_gradients
                     else:
                         print(f"No gradients received from parameter server for job {job_id}")
