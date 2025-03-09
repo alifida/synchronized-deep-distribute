@@ -118,8 +118,10 @@ async def submit_gradients(parameter_server_url, worker_id: str, job_id: str, gr
         
         if previous_gradients is not None:
             # Compute gradient differences (delta)
+            print("****  debug: previous_gradients is not None  ****")
             delta_gradients = [curr - prev for curr, prev in zip(normalized_gradients, previous_gradients)]
         else:
+            print("****  debug: previous_gradients is None  ****")
             delta_gradients = normalized_gradients  # First-time submission sends full gradients
 
         # Apply sparsification (optional: remove small values to compress further)

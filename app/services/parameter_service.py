@@ -21,6 +21,7 @@ import math
 import tensorflow as tf
 import os
 import numpy as np
+import asyncio
 
 
 
@@ -57,6 +58,8 @@ class ParameterService:
          
 
         response = await ParameterService.distribute_training_amoung_workers(subsets, workers, parameter_settings, f"{job_data['job_id']}", parameter_sever_url)
+    
+    
 
     @staticmethod
     async def distribute_training_amoung_workers(subsets, workers, parameter_settings, job_id, parameter_sever_url):
@@ -67,39 +70,37 @@ class ParameterService:
         del parameter_settings["cluster"]
         del parameter_settings["strategy"]
         del parameter_settings["epochs"]
-         
+        
         payload = parameter_settings
         payload["parameter_sever_url"] = str(parameter_sever_url)
 
         responses = {}
 
-        # Create an aiohttp session for making asynchronous requests
-        async with aiohttp.ClientSession() as session:
-            # Iterate over the workers
-            for worker in workers:
-                worker_key = ParameterService.get_worker_key(worker)
-                
-                # Assign dataset to the payload based on worker key
-                payload["dataset"] = subsets[worker_key]["dataset"]
-                
-                # Create the worker URL with the job and worker ID
-                worker_url = f"http://{worker.ip_address}:{worker.port}/worker/init-training?worker_id=worker_{worker.id}&job_id={job_id}"
-                
+        async def send_request(worker):
+            """ Helper function to send a request to a worker asynchronously. """
+            worker_key = ParameterService.get_worker_key(worker)
+            payload["dataset"] = subsets[worker_key]["dataset"]
+
+            worker_url = f"http://{worker.ip_address}:{worker.port}/worker/init-training?worker_id=worker_{worker.id}&job_id={job_id}"
+
+            async with aiohttp.ClientSession() as session:
                 try:
-                    # Send the POST request to the worker's URL
                     async with session.post(worker_url, json=payload) as response:
-                        
-                        # Check if the request was successful (HTTP status code 200)
                         if response.status == 200:
-                            responses[worker_key] = await response.json()  # Collect the response as a JSON object
+                            return worker_key, await response.json()
                         else:
-                            responses[worker_key] = {"error": f"Failed with status code {response.status}"}
-
+                            return worker_key, {"error": f"Failed with status code {response.status}"}
                 except aiohttp.ClientError as exc:
-                    # Handle request errors
-                    responses[worker_key] = {"error": f"Request failed: {exc}"}
+                    return worker_key, {"error": f"Request failed: {exc}"}
 
-        # Return the collected responses
+        # Create tasks for each worker and run them in parallel
+        tasks = [send_request(worker) for worker in workers]
+        results = await asyncio.gather(*tasks)
+
+        # Store the results in the responses dictionary
+        for worker_key, result in results:
+            responses[worker_key] = result
+
         return responses
 
 
@@ -454,7 +455,7 @@ class ParameterService:
 
 
              
-            evaluated_metrics = await evaluate_model(job_id, model_file_path, dataset_img.extracted_path_test)
+            evaluated_metrics = await evaluate_model(algo_name, model_file_path, dataset_img.extracted_path_test)
              
             # Prepare and return training details
             result = {
@@ -536,15 +537,15 @@ def convert_pkl_to_h5(algo_name: str, pkl_file_path: str):
 
 
 
-async def evaluate_model(job_id, model_file_path, test_data_dir):
+async def evaluate_model(algo_name, model_file_path, test_data_dir):
     """Evaluates the trained model on a test dataset with multiple classes."""
     from app.services.keras_catalog_service import KerasCatalogService
     from .redis_service import redis_client
     
 
     classes = await DatasetService.get_class_labels(test_data_dir)
-    job_context = redis_client.get_job_context(job_id)
-    algo_name = job_context['init_params'] ["algo_name"]
+    #job_context = redis_client.get_job_context(job_id)
+    #algo_name = job_context['init_params'] ["algo_name"]
     # Reconstruct the model using the architecture from KerasCatalogService
     base_model = KerasCatalogService.get_model_object(algo_name)  
     base_model.trainable = True  
