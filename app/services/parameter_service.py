@@ -31,6 +31,7 @@ class ParameterService:
     gradients_store = {}  # In-memory storage for gradients by job_id
     metrics_store ={} # In-memory storage for metrics by job_id
     stats_store ={}
+    global_settings={}
 
 
     async def start_training_job(data):
@@ -51,7 +52,7 @@ class ParameterService:
         cluster_id = parameter_settings.get("cluster")
         async for db in get_db():
             workers = await ClusterNodesDAO.fetch_workers_by_cluster_id(db, cluster_id)
-
+            ParameterService.global_settings["total_workers"] = len(workers)
          
 
         subsets = await ParameterService.divide_dataset_classwise(classwise_details, workers, dataset_host_url)
@@ -354,7 +355,7 @@ class ParameterService:
     @staticmethod
     async def all_workers_done(job_id):
         job_stats = ParameterService.stats_store.get(job_id, None)
-        total_workers = len(job_stats["workers"])
+        total_workers = ParameterService.global_settings['total_workers']
         completed_workers = 0
         failed_workers = 0
 
@@ -372,8 +373,10 @@ class ParameterService:
 
 
 
+         
+
         # Ensure all workers completed training
-        if completed_workers + failed_workers < total_workers:
+        if completed_workers == 0 or completed_workers + failed_workers < total_workers:
             return False
         else:
             return True

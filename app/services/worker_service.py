@@ -41,6 +41,8 @@ class WorkerService:
             #save in redis
             redis_client.save_job_context(job_id, job_context)
             examples = init_params["dataset"]["images"]
+            if (not len(examples)>0):
+                raise ValueError("Error: No image provided in the dataset.")
 
             # Start downloading images in the background
             #asyncio.create_task(DatasetService.download_images(job_id, image_urls))
