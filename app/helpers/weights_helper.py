@@ -72,15 +72,24 @@ def aggregate___(existing, fresh):
     return aggregated_weights
 
 
+def serialize_weights(weights, write_to_file=False, compress=True):
+    """
+    Serializes model weights and optionally compresses them.
+    """
+    #  Convert weights to NumPy arrays (handles TensorFlow Variables & Tensors)
+    serializable_weights = [w.numpy() if isinstance(w, (tf.Variable, tf.Tensor)) else w for w in weights]
 
-def serialize_weights(weights, write_to_file=False):
-    # Convert weights to numpy arrays for serialization
-    serializable_weights = [weight.numpy() if isinstance(weight, tf.Variable) else weight for weight in weights]
-    serialized_data = gzip.compress(pickle.dumps(serializable_weights))  # Serialize and compress
+    # Faster serialization
+    serialized_data = pickle.dumps(serializable_weights, protocol=pickle.HIGHEST_PROTOCOL)
+
+    #  Compress only if needed
+    if compress:
+        serialized_data = gzip.compress(serialized_data)
 
     if write_to_file:
         file_path = write_to_tmp_file(serialized_data)
         print(file_path)
+
     return serialized_data
 
 def write_to_tmp_file(data):
@@ -95,6 +104,9 @@ def write_to_tmp_file(data):
         tmp_file_path = tmp_file.name  # Save the file path
 
     return tmp_file_path
+
+
+
 
 
 def deserialize_weights(weights):

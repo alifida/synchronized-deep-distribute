@@ -6,7 +6,8 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:window@l
 # Redis connection string
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
-
+#Kafka
+KAFKA_BROKER_URL = os.getenv("KAFKA_BROKER_URL", "localhost:9092")
 #DATASET_HOST = os.getenv("DATASET_HOST", "http://localhost:89/tmp/")
 
 PARAMETER_SERVER_URL = os.getenv("PARAMETER_SERVER_URL", "/ps") #root context real url will be injected at runtime

@@ -10,7 +10,7 @@ class TrainedModel(Base):
     id = Column(Integer, primary_key=True, index=True)
 
     # Other fields
-    model_file = Column(String(100), nullable=True)
+    model_file = Column(Text, nullable=False)
     description = Column(String(300), nullable=True)
     status = Column(String(100), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False)

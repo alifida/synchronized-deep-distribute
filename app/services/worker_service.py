@@ -1,5 +1,5 @@
 import asyncio
-from app.background_tasks.worker_sync import fetch_latest_gradients, submit_gradients, submit_metrics, submit_weights, submit_stats
+from app.background_tasks.worker_sync import fetch_ps_gradients,reset_ps_gradients, submit_gradients, submit_metrics, submit_weights, submit_stats
 import tensorflow as tf
 from collections import deque
 from app.helpers.weights_helper import aggregate
@@ -10,12 +10,12 @@ from app.helpers.util import get_dataset_path
 from app.db.database import get_db
 from app.dao.dataset_Img_dao import DatasetImgDAO
 from app.dao.training_job_dao import  TrainingJobDAO
-
+import numpy as np
 
 #from app.services.model_loader import load_model  # Hypothetical helper to load models dynamically
 from app.services.keras_catalog_service import KerasCatalogService as kerasService
 
-
+latest_gradients_store={}
 
 class WorkerService:
 
@@ -129,7 +129,7 @@ class WorkerService:
 
 
             
-            
+            first_time =True
 
             for epoch in range(total_epoch):
                 print(f"Starting epoch {epoch + 1}/{total_epoch}")
@@ -161,9 +161,11 @@ class WorkerService:
                         with tf.GradientTape() as tape:
                             predictions = model(image_tensor, training=True)
                             loss = loss_fn(label_tensor, predictions)
-
-                        gradients = tape.gradient(loss, model.trainable_variables)
-                        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+                        if first_time:
+                            gradients = tape.gradient(loss, model.trainable_variables)
+                            gradients = WorkerService.compress_gradients(gradients)
+                            optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+                            first_time=False
 
                         # Update metrics
                         accuracy_metric.update_state(label_tensor, predictions)
@@ -181,14 +183,14 @@ class WorkerService:
                         f1_score.update_state(f1)
 
                         #print(f"Processed image. Loss: {loss.numpy()}")
-
-                        await submit_gradients(parameter_sever_url, worker_id, job_id, gradients)
+                        if processed_images_count % 1 ==0:
+                            await submit_gradients(parameter_sever_url, worker_id, job_id, gradients)
                          
                         # Fetch the latest aggregated weights and update the model
-                        latest_gradients = await fetch_latest_gradients(parameter_sever_url, worker_id=worker_id, job_id=job_id)
+                        latest_gradients = fetch_ps_gradients(job_id)
                         if latest_gradients:
                             optimizer.apply_gradients(zip(latest_gradients, model.trainable_variables))
-
+                            reset_ps_gradients(job_id)
                         # submit results
                         if init_params.get("post_realtime_results", True):
                             metrics = {
@@ -203,7 +205,10 @@ class WorkerService:
 
                         images_q.popleft()
                         processed_images_count +=1
-                        #print(f"------ example processed: {processed_images_count}")
+
+
+                        first_time = False
+                        print(f"----************############### epoch: {epoch}/{total_epoch}-- example processed: {processed_images_count}")
 
             # Final metrics computation
             accuracy = accuracy_metric.result().numpy()
@@ -234,4 +239,40 @@ class WorkerService:
             redis_client.clear_job_context(job_id)  # Clean up context
             DatasetService.delete_dataset(dataset_dir)
 
+    @staticmethod
+    def compress_gradients(gradients, bit_width=4, sparsity=0.9):
+        """
+        Apply quantization & sparsification to reduce gradient size.
+        """
+        # Quantization (Convert to 8-bit)
+        try:
+            scale = 2 ** bit_width - 1
 
+            #  Filter out None gradients
+            gradients = [grad for grad in gradients if grad is not None]
+
+            #  Convert to NumPy before applying astype()
+            gradients = [(grad.numpy() * scale).astype(np.int8) / scale for grad in gradients]
+
+            # Sparsification (Zero out small gradients)
+            for i in range(len(gradients)):
+                grad = gradients[i]
+
+                #  Compute size safely
+                grad_size = np.size(grad)
+                if grad_size == 0:  # Skip empty gradients
+                    continue
+
+                k = int(sparsity * grad_size)
+                threshold = np.sort(np.abs(grad), axis=None)[k]  # Use NumPy sorting
+                gradients[i] = np.where(np.abs(grad) < threshold, np.zeros_like(grad), grad)
+
+            #  Convert back to TensorFlow tensors
+            gradients = [tf.convert_to_tensor(grad, dtype=tf.float32) for grad in gradients]
+
+            #  Gradient Clipping
+            gradients = [tf.clip_by_value(grad, -1.0, 1.0) for grad in gradients]
+
+        except Exception as e:
+            print(f"Error in compress_gradients, Exception: {str(e)}")
+        return gradients

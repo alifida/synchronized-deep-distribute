@@ -5,7 +5,7 @@ from app.config.settings import DATABASE_URL
 
 
 # Create Async Engine
-engine = create_async_engine(DATABASE_URL, poolclass=NullPool, echo=True)
+engine = create_async_engine(DATABASE_URL, poolclass=NullPool, echo=False)
 
 # Create Async Session
 AsyncSessionLocal = sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)

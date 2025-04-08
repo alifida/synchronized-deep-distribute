@@ -1,18 +1,17 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 import asyncpg
 #from models import TrainDatasetImg, TrainTrainingJob
 from app.controllers.parameter_server_controller import ps_router
 from app.controllers.worker_controller import w_router
 from app.controllers.training_job_controller import training_job_router
 from app.controllers.trained_model_controller import trained_model_router
-from fastapi.staticfiles import StaticFiles
 import os
 from app.services.redis_service import redis_client
 from pathlib import Path
-
-
+from app._kafka.producer import init_producer
+from app._kafka.consumer import start_consumer_thread
+import logging
 #Disable gpu
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
@@ -26,8 +25,19 @@ app = FastAPI()
 DATASET_DIR = Path(__file__).parent / "static/tmp/datasets"
 MODELS_DIR = Path(__file__).parent / "static/trained_models"
 
+
+
+logging.basicConfig(level=logging.WARNING)  # Set default logging level to WARNING
+logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)  # Suppress SQL query logs
+logging.getLogger('asyncpg').setLevel(logging.WARNING)  # Optional, suppress asyncpg logs as well
+
+
 task_queue = redis_client.get_task_queue()
 
+
+
+init_producer()
+start_consumer_thread()
 # CORS Middleware
 app.add_middleware(
     CORSMiddleware,

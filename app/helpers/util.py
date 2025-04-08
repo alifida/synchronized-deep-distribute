@@ -1,6 +1,11 @@
 from urllib.parse import urlparse
 import os
 from pathlib import Path
+import random
+import string
+import time
+
+
 def get_label_by_url(url):
     # Parse the URL
     parsed_url = urlparse(url)
@@ -29,3 +34,22 @@ def get_dataset_path(job_id):
     path = f"{DATASET_DIR}/{job_id}/"
     prepare_path(path=path)
     return path
+
+
+
+
+
+def generate_unique_string(length=3):
+    # Combine the current time (in seconds) and a random string
+    timestamp = int(time.time())  # Get the current time as a unique timestamp
+    random_string = ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
+
+    # Create a unique string by combining the timestamp with the random string
+    unique_string = f"{timestamp}_{random_string}"
+
+    return unique_string
+
+def get_host():
+    import socket
+    return socket.gethostname()
+

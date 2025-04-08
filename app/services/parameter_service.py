@@ -1,9 +1,10 @@
+
 import re
 import json
 import aiohttp
 from app.db.database import get_db
 #from app.config.settings import TRAINED_MODELS_DIR
-from app.helpers.weights_helper import aggregate, aggregate_gradients
+from app.helpers.weights_helper import aggregate, aggregate_gradients, serialize_weights
 import pickle
 import os
 from app.services.keras_catalog_service import KerasCatalogService as kerasService
@@ -318,6 +319,26 @@ class ParameterService:
             existing_gradients = aggregate_gradients(existing_gradients, worker_gradients)
             ParameterService.gradients_store[job_id] = existing_gradients
         return True
+
+
+
+    @staticmethod
+    async def produce_latest_gradients(job_id):
+        try:
+            latest_gradients = ParameterService.gradients_store[job_id]
+            sparsity_threshold = 1e-5
+            latest_gradients = [np.where(np.abs(grad) > sparsity_threshold, grad, 0) for grad in latest_gradients]
+
+            # Serialize and compress the delta gradients
+            serialized_gradients = serialize_weights(latest_gradients)
+
+            from app._kafka.producer import produce_latest_gradients
+            if produce_latest_gradients(job_id, serialized_gradients):
+                 print(f"latest gradients published to kafka")
+            else:
+                raise Exception("Failed to produce latest gradients to kafka")
+        except Exception as e:
+            print(f"ERROR:  produce_latest_gradients: {job_id};  ERROR: {str(e)} ")
 
     @staticmethod
     async def get_aggregated_gradients(worker_id:str, job_id: str):
